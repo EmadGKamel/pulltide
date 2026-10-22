@@ -443,6 +443,9 @@ func openInput(root *os.File, path string, directory bool) (*os.File, error) {
 		next, err := syscall.Openat(int(current.Fd()), part, flags, 0)
 		current.Close()
 		if err != nil {
+			if err == syscall.ENOENT {
+				return nil, errors.Join(ErrRecoveryRequired, os.ErrNotExist)
+			}
 			return nil, ErrRecoveryRequired
 		}
 		current = os.NewFile(uintptr(next), "private-input")
@@ -457,21 +460,27 @@ func openInput(root *os.File, path string, directory bool) (*os.File, error) {
 func (s *Store) verifyInputs(st *State, synchronize bool, workspaces map[string]bool) error {
 	for _, instance := range st.Instances {
 		workspace, err := openInput(s.root, instance.Workspace, true)
-		if err != nil {
+		reserved := st.Journal != nil && st.Journal.Kind == "deployment" && st.Journal.RestorationID == instance.ID && st.Journal.Stage == "restore-prepare-intent" && st.Journal.Operation != nil && st.Journal.Operation.Result != "completed-success"
+		if err != nil && !(reserved && errors.Is(err, os.ErrNotExist)) {
 			return ErrRecoveryRequired
 		}
-		if synchronize && workspaces[instance.ID] {
+		if reserved && workspace == nil && errors.Is(err, os.ErrNotExist) {
+			err = nil
+		}
+		if workspace != nil && synchronize && workspaces[instance.ID] {
 			err = s.syncTree(workspace)
 		}
-		workspace.Close()
-		if synchronize && workspaces[instance.ID] && err == nil {
+		if workspace != nil {
+			workspace.Close()
+		}
+		if workspace != nil && synchronize && workspaces[instance.ID] && err == nil {
 			err = s.syncParents(instance.Workspace)
 		}
 		if err != nil {
 			return err
 		}
 		checkRecoveryFiles := true
-		if j := st.Journal; j != nil && j.Operation != nil && j.Operation.OperandID == instance.ID && j.Operation.Result != "completed-success" {
+		if j := st.Journal; j != nil && j.Operation != nil && operationCovers(*j.Operation, instance.ID) && j.Operation.Result != "completed-success" {
 			checkRecoveryFiles = false
 		}
 		for _, path := range instance.RequiredRecoveryFiles {
@@ -559,7 +568,9 @@ func workspaceBarriers(old, next *State) map[string]bool {
 	if j := next.Journal; j != nil && j.Operation != nil && j.Operation.Result == "completed-success" {
 		prior := old.Journal
 		if prior == nil || prior.Operation == nil || prior.Operation.ID != j.Operation.ID || prior.Operation.Result != "completed-success" {
-			ids[j.OperandID] = true
+			for _, id := range cleanupOperands(*j.Operation) {
+				ids[id] = true
+			}
 		}
 	}
 	if next.LastGoodID != old.LastGoodID && next.LastGoodID != "" {

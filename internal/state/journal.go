@@ -114,6 +114,9 @@ func (s *Store) BeginObservation() error {
 		}
 		health := st.Instances[st.Active.InstanceID].Saved.Health
 		st.Journal = &Journal{Kind: "observation", AttemptID: id, BootID: boot, Stage: "startup-verify-intent", OperandID: st.Active.InstanceID, SavedHealth: &health, CleanupCompleted: map[string]bool{}}
+		if st.Suppressed != nil && oneOf(st.Phase, "failed", "rolled-back") {
+			st.Journal.ResumePhase = st.Phase
+		}
 		s.observationStarted = true
 		st.Health = Health{State: "unknown"}
 		st.Phase = "verifying"
@@ -124,10 +127,36 @@ func (s *Store) BeginObservation() error {
 // RecordIntent is the durable boundary before an external action. This package
 // never invokes that action. A previous unknown result cannot be bypassed.
 func (s *Store) RecordIntent(stage, operand string, checkIndex *int) error {
+	return s.recordIntent(stage, operand, checkIndex, false, nil)
+}
+
+// RecordReplacementIntent persists driver-declared replacement semantics; true
+// authorizes in-place replacement, not a fabricated successful prior stop.
+func (s *Store) RecordReplacementIntent(inPlace bool) error {
+	st, err := s.Read()
+	if err != nil {
+		return err
+	}
+	if st.Journal == nil {
+		return ErrCorrupt
+	}
+	return s.recordIntent("candidate-apply-intent", st.Journal.CandidateID, nil, inPlace, nil)
+}
+
+// RecordCleanupIntent preserves the exact operand set covered by one action.
+func (s *Store) RecordCleanupIntent(ids []string) error {
+	if len(ids) == 0 {
+		return ErrCorrupt
+	}
+	return s.recordIntent("cleanup-intent", ids[0], nil, false, ids)
+}
+func (s *Store) recordIntent(stage, operand string, checkIndex *int, inPlace bool, cleanup []string) error {
 	op, err := operation(stage, operand, checkIndex)
 	if err != nil {
 		return err
 	}
+	op.InPlace = inPlace
+	op.CleanupIDs = append([]string(nil), cleanup...)
 	return s.update(func(st *State) error {
 		j := st.Journal
 		if s.recoveryFailed {
@@ -148,6 +177,15 @@ func (s *Store) RecordIntent(stage, operand string, checkIndex *int) error {
 		if j != nil && oneOf(stage, "cleanup-intent", "prior-stop-intent") && j.CleanupCompleted[operand] {
 			return ErrRecoveryRequired
 		}
+		if j != nil && len(op.CleanupIDs) > 0 {
+			seen := map[string]bool{}
+			for _, id := range op.CleanupIDs {
+				if seen[id] || !j.MayBeLive[id] || !oneOf(id, j.PriorID, j.CandidateID, j.RestorationID) {
+					return ErrCorrupt
+				}
+				seen[id] = true
+			}
+		}
 		if j == nil || !validOperand(j, stage, operand) {
 			return ErrCorrupt
 		}
@@ -163,7 +201,7 @@ func (s *Store) RecordIntent(stage, operand string, checkIndex *int) error {
 		if !allowedStage(j.Stage, stage) {
 			return ErrCorrupt
 		}
-		if stage == "candidate-apply-intent" && j.PriorID != "" && !j.CleanupCompleted[j.PriorID] {
+		if stage == "candidate-apply-intent" && j.PriorID != "" && !j.CleanupCompleted[j.PriorID] && !inPlace {
 			return ErrRecoveryRequired
 		}
 		if stage == "restore-apply-intent" {
@@ -259,11 +297,13 @@ func (s *Store) RecordCheckpoint(result string, driverConfirmedStopped bool, rec
 		j.Operation.Result = result
 		j.Operation.QuiescenceConfirmed = driverConfirmedStopped
 		if result == "completed-success" && oneOf(j.Stage, "cleanup-intent", "prior-stop-intent") {
-			instance := st.Instances[j.OperandID]
-			instance.RequiredRecoveryFiles = nil
-			st.Instances[j.OperandID] = instance
-			j.CleanupCompleted[j.OperandID] = true
-			delete(j.MayBeLive, j.OperandID)
+			for _, id := range cleanupOperands(*j.Operation) {
+				instance := st.Instances[id]
+				instance.RequiredRecoveryFiles = nil
+				st.Instances[id] = instance
+				j.CleanupCompleted[id] = true
+				delete(j.MayBeLive, id)
+			}
 		}
 		if result != "completed-success" {
 			st.Phase = "recovery-required"
@@ -283,7 +323,7 @@ func (s *Store) RecordCheckpoint(result string, driverConfirmedStopped bool, rec
 			if result == "completion-unknown" {
 				category = "uncertain-operation"
 			}
-			st.Error = &Diagnostic{Category: category, Stage: stage}
+			st.Error = &Diagnostic{Category: category, Stage: stage, CheckIndex: j.Operation.CheckIndex}
 		}
 		return nil
 	}, result == "completed-success")
@@ -356,7 +396,7 @@ func (s *Store) AttachRestoration(workspace string) (string, error) {
 		oldID := j.RestorationID
 		history := j.Completed[:0]
 		for _, op := range j.Completed {
-			if op.OperandID != oldID {
+			if op.OperandID != oldID || (op.Stage == "cleanup-intent" && op.Result == "completed-success" && len(op.CleanupIDs) > 0) {
 				history = append(history, op)
 			}
 		}
@@ -413,7 +453,9 @@ func (s *Store) CommitVerified() error {
 		s.observationStarted = true
 		now := time.Now().UTC()
 		st.Health = Health{State: "healthy", ObservedAt: &now}
-		st.Error = nil
+		if j.Stage == "candidate-verify-intent" {
+			st.Error = nil
+		}
 		s.reopenedJournal = false
 		s.recoveryStarted = false
 		s.recoveryFailed = false
@@ -438,10 +480,16 @@ func (s *Store) CommitObservation(healthy bool) error {
 		now := time.Now().UTC()
 		st.Health = Health{State: "healthy", ObservedAt: &now}
 		st.Phase = "healthy"
+		if healthy && st.Suppressed != nil {
+			st.Phase = "rolled-back"
+			if j.ResumePhase != "" {
+				st.Phase = j.ResumePhase
+			}
+		}
 		if !healthy {
 			st.Health.State = "unhealthy"
 			st.Phase = "recovery-required"
-			st.Error = &Diagnostic{Category: "health", Stage: "verify"}
+			st.Error = &Diagnostic{Category: "health", Stage: "verify", CheckIndex: j.Operation.CheckIndex}
 		}
 		st.Journal = nil
 		return nil
@@ -495,8 +543,10 @@ func (s *Store) RecordHealthWindow(healthy, checksConfirmedStopped bool) error {
 			j.HealthWindowResult = "completed-success"
 		} else {
 			j.HealthWindowResult = "completed-failure"
+			st.Error = &Diagnostic{Category: "health", Stage: "verify", CheckIndex: j.Operation.CheckIndex}
 			if s.recoveryStarted {
 				s.recoveryFailed = true
+				st.Phase = "recovery-required"
 			}
 		}
 		return nil
@@ -568,6 +618,9 @@ func (s *Store) AbandonObservation(driverConfirmedStopped bool) error {
 		}
 		if j.Operation != nil && !oneOf(j.Operation.Result, "completed-success", "completed-failure") && !driverConfirmedStopped {
 			return ErrRecoveryRequired
+		}
+		if j.ResumePhase != "" {
+			st.Phase = j.ResumePhase
 		}
 		st.Journal = nil
 		st.Health = Health{State: "unknown"}

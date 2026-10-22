@@ -81,3 +81,12 @@ python3 tests/contract/parity.py /tmp/pulltide-contract
 
 Parity requires both validators to match each fixture's expected acceptance or
 rejection. It also rejects unexpected CLI exit codes and incomplete manifests.
+
+## Reconciliation engine (Milestone 04)
+
+`internal/reconcile` implements the serialized lifecycle against source, runtime,
+and health adapter contracts, using the durable state store. This milestone
+provides fake-adapter tests; it adds no deployment CLI, daemon, or real drivers.
+See [M04 acceptance coverage and adapter obligations](tests/reconcile/m04-coverage.md).
+Run `go test ./...`, `CGO_ENABLED=1 go test -race ./...`, and `go vet ./...`, plus
+contract and fixture parity checks above.
