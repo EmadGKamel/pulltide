@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12.3'
+      - name: Install dependencies
+        run: |
+          go mod download
+          python -m venv .venv-contract
+          .venv-contract/bin/python -m pip install --disable-pip-version-check --no-deps -r tests/contract/requirements.lock
+      - name: Go formatting
+        shell: bash
+        run: |
+          mapfile -d '' files < <(git ls-files -z '*.go')
+          unformatted=$(gofmt -l "${files[@]}")
+          if [[ -n "$unformatted" ]]; then
+            printf 'Run gofmt on:\n%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Go tests
+        run: go test ./...
+      - name: Go vet
+        run: go vet ./...
+      - name: Python contract checker
+        run: .venv-contract/bin/python tests/contract/check.py
+      - name: Python/Go YAML fixture parity
+        run: |
+          go build -o "$RUNNER_TEMP/pulltide" ./cmd/pulltide
+          .venv-contract/bin/python tests/contract/parity.py "$RUNNER_TEMP/pulltide"
+      - name: Diff validation
+        run: git diff --check
