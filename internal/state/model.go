@@ -79,10 +79,13 @@ type Operation struct {
 	OperandID           string
 	BootID              string
 	CheckIndex          *int
+	InPlace             bool     `json:",omitempty"`
+	CleanupIDs          []string `json:",omitempty"`
 	QuiescenceConfirmed bool
 	Result              string // Empty is durable intent without a durable result: may have run.
 }
 type Journal struct {
+	ResumePhase        string `json:",omitempty"`
 	Kind               string
 	AttemptID          string
 	BootID             string
@@ -263,6 +266,9 @@ func (s *State) ReferencedInstances() map[string]bool {
 }
 func (s *State) validateJournal() error {
 	j := s.Journal
+	if j.ResumePhase != "" && (j.Kind != "observation" || !oneOf(j.ResumePhase, "failed", "rolled-back")) {
+		return ErrCorrupt
+	}
 	if !validText(j.AttemptID) || !validText(j.BootID) || j.CleanupCompleted == nil {
 		return ErrCorrupt
 	}
@@ -335,7 +341,7 @@ func (s *State) validateJournal() error {
 		}
 	}
 	seen := map[string]bool{}
-	for _, op := range append(append([]Operation{}, j.Completed...), operationSlice(j.Operation)...) {
+	for opIndex, op := range append(append([]Operation{}, j.Completed...), operationSlice(j.Operation)...) {
 		if !validText(op.ID) || seen[op.ID] || !validText(op.BootID) || !oneOf(op.Result, "", "completed-success", "completed-failure", "completion-unknown") {
 			return ErrCorrupt
 		}
@@ -346,7 +352,23 @@ func (s *State) validateJournal() error {
 		if op.CheckIndex != nil && (*op.CheckIndex < 0 || op.OperandID == "" || *op.CheckIndex >= len(s.Instances[op.OperandID].Saved.Health.Checks)) {
 			return ErrCorrupt
 		}
-		if !validOperand(j, op.Stage, op.OperandID) {
+		historicalGroup := opIndex < len(j.Completed) && op.Stage == "cleanup-intent" && op.Result == "completed-success" && len(op.CleanupIDs) > 0
+		if op.InPlace && op.Stage != "candidate-apply-intent" {
+			return ErrCorrupt
+		}
+		if len(op.CleanupIDs) > 0 {
+			if op.Stage != "cleanup-intent" || op.CleanupIDs[0] != op.OperandID {
+				return ErrCorrupt
+			}
+			group := map[string]bool{}
+			for _, id := range op.CleanupIDs {
+				if !validText(id) || group[id] || (!historicalGroup && !oneOf(id, j.PriorID, j.CandidateID, j.RestorationID)) {
+					return ErrCorrupt
+				}
+				group[id] = true
+			}
+		}
+		if !validOperand(j, op.Stage, op.OperandID) && !historicalGroup {
 			return ErrCorrupt
 		}
 	}
@@ -372,8 +394,15 @@ func (s *State) validateJournal() error {
 			delete(cleaned, op.OperandID)
 		}
 		if oneOf(op.Stage, "prior-stop-intent", "cleanup-intent") && op.Result == "completed-success" {
-			delete(live, op.OperandID)
-			cleaned[op.OperandID] = true
+			for _, id := range cleanupOperands(op) {
+				delete(live, id)
+				cleaned[id] = true
+			}
+		}
+	}
+	for id := range cleaned {
+		if !oneOf(id, j.PriorID, j.CandidateID, j.RestorationID) {
+			delete(cleaned, id)
 		}
 	}
 	if !equalJSON(live, nonNilFlags(j.MayBeLive)) || !equalJSON(cleaned, j.CleanupCompleted) {
@@ -433,4 +462,19 @@ func successfulHealthRound(st *State, j *Journal) bool {
 		}
 	}
 	return true
+}
+
+func cleanupOperands(op Operation) []string {
+	if len(op.CleanupIDs) > 0 {
+		return op.CleanupIDs
+	}
+	return []string{op.OperandID}
+}
+func operationCovers(op Operation, id string) bool {
+	for _, operand := range cleanupOperands(op) {
+		if operand == id {
+			return true
+		}
+	}
+	return false
 }
