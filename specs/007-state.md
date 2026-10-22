@@ -1,0 +1,114 @@
+# 007 — Local state
+
+## Purpose
+
+Preserve deployment truth and recovery inputs across process death and host reboot, including interrupted preparation and startup health checks.
+
+## Scope
+
+Canonical local ownership, deployment instances, durable artifacts, journals, deterministic restart handling, and failed-target suppression. The architecture choices approved by the maintainer remain in force; these detailed amendments await review before implementation.
+
+## Requirements
+
+### Ownership, targets, and instances
+
+- One dedicated account on one Linux host owns `/var/lib/pulltide`. Alternate production roots are unsupported. Application names are host-unique; acquire the canonical exclusive Application lock before managed-runtime inspection or artifact operations. Death releases the lock but does not prove old operations stopped.
+- A durable ownership registry separate from per-Application state binds name, runtime, and resource identity. Compose includes daemon identity and project `pulltide-<name>`. Reject preexisting unowned projects. Missing app state with an existing binding is recovery-required, not first deployment. Complete root loss requires restoring ownership/state or operator confirmation that all prior resources/mutators are stopped; arbitrary exec ownership cannot be inferred automatically.
+- Core alone writes authoritative state. Drivers return evidence and artifact references; they do not change last-good or independently retry.
+- A target is the source-qualified revision plus configuration identity. A deployment **instance** adds a unique, never-reused opaque `instanceId`, concrete workspace, runtime artifact/descriptor references, and saved execution inputs. Applying the same target during restoration creates a new instance; it does not change the target identity or rebuild its image artifacts.
+- State contains version, Application/ownership identity, desired target, active known/absent/unknown, last-good instance, current health observation, suppression, phase/error, and at most one journal. Full instance records include target, saved runtime/health configuration, immutable source/artifact references, mutable workspace, and image archives when applicable. Records are private; registry config/helper/session credentials MUST NOT be copied into any state/journal/artifact or status/log. Authentication remains external and is not an offline rollback dependency. Raw output is not status. Git identities remain opaque to core.
+- Restoration allocates and durably records its new instance before apply. On success, active and last-good MUST both reference this new instance/workspace and its descriptor; last-good's target/configuration/image identities remain unchanged. Retain old operands until the journal and any other references release them. Subsequent stop, startup health, and GC MUST use the restored instance, not its predecessor's workspace.
+
+### Durability and generated recovery files
+
+- Complete validated source/config/workspace inputs MUST be durable before records reference them. Compose image archives/manifests must satisfy 005. Reference integrity and artifact checksums are verified on startup. Mutable workspaces are validated for existence and recorded required recovery files, not compared byte-for-byte to immutable source.
+- Generated files needed by later stop/health are recovery inputs. Operator commands MUST publish those files with crash-safe writes before returning success and tolerate missing/partial generated files after interrupted commands. Stop MUST be able to clean a partial deployment without assuming an uncommitted PID/marker file exists. External service managers/data are operator-managed dependencies, not reconstructed by Pulltide.
+- Before accepting a completed-success/usable recovery checkpoint, advancing to a dependent action, or committing success, core MUST ensure the instance workspace's required generated files and containing directory entries are durably synchronized. v0.1 synchronizes the complete owned workspace rather than relying on an undeclared file list. Concurrent application writes/external data are not snapshotted or made transactional; commands may not depend on such writes becoming rollback inputs. Storage/synchronization failure prevents successful/dependent advancement and leaves recovery-required. Recording failure or completion-unknown evidence MUST still be attempted even when synchronization cannot succeed; persisting an error is not acceptance of a usable workspace checkpoint. Do not run a durability barrier concurrently with unquiesced writers and claim success.
+- Atomically replace complete state records and durably commit containing-directory metadata. Readers see the old or new complete record. Unknown format/identity versions, corrupt records, and missing/corrupt retained inputs block mutation; never reset to empty state.
+- Pin latest verified last-good, active, candidate during its active attempt, and every pending observation/cleanup/restoration operand and their required artifacts/archives. Keep historical last-good pinned when active is absent. No extra successful-revision history is retained; after promotion/recovery clears old references durably, only truly unreferenced inputs become eligible. Builder/daemon cache is not authoritative retained image content.
+- Before artifact mutators and workload/recovery mutators, validate all already-required rollback references, full archive readability/checksums, saved cleanup operands, and conservative storage admission under 005. Recheck before dependent actions when evidence is no longer valid. Missing/corrupt artifacts block even if the daemon still holds the image. Never release last-good references or reconstruct a different image to overcome admission failure.
+
+### Bounded private-artifact reclamation
+
+- Authoritative reference publication/release and collection MUST serialize under a canonical host artifact lock, in addition to Application ownership. Immediately before deletion, recheck a consistent complete view of references across all Applications. An incomplete/inconsistent view or unavailable lock skips collection; it does not authorize deletion. Never follow a cleanup symlink outside the canonical private store, infer ownership merely from a filename, or delete referenced paths.
+- After durable reference release, enqueue owned unreferenced paths, including abandoned staging/partial archives from conclusively ended attempts. Do not enqueue uncertain-operation inputs until their quiescence is proved. A queue item is eligibility evidence, not permission to bypass the final reference check. Missing already-deleted paths are idempotent successes; restart preserves/reconstructs the eligible backlog without converting partial files into artifacts.
+- Run at most one batch at startup after pending-operation resolution or at the end of each completed reconciliation cycle. Each batch examines/removes at most 128 filesystem entries, using incremental bottom-up traversal rather than an unbounded recursive scan. Stop scheduling new filesystem actions once min(5 seconds, applicable operationTimeoutSeconds) elapses. A blocking in-progress host filesystem call is not guaranteed to finish within that scheduling budget; its timeout/failure MUST NOT justify further deletion. No parallel/background deletion workers or immediate repeat batches are allowed. The current loaded timeout governs ordinary reclamation; recovery uses frozen attempt T and does not insert collection into its recovery budget.
+- Collection covers only owned private workspace/staging/archive/manifest files with zero references. It MUST NOT invoke Docker prune, remove daemon images by ID, remove Docker aliases/volumes, or touch external data. Shared daemon images/cache and obsolete aliases remain operator-managed; private-file cleanup cannot guarantee a bounded daemon disk footprint.
+- Failed unlink, traversal, or backlog persistence leaves remaining entries for a later permitted batch and emits a sanitized persistence diagnostic. It does not roll back a committed healthy deployment, loop to free space, or delete protected inputs. Low disk may therefore block new preparation until operator repair; recovery retains its journal. No new public cleanup/quota fields are introduced. Retention is bounded by live deployment references, not by a guaranteed byte quota.
+
+### Journal model and frozen policy
+
+- Each journal has `kind` (`preparation`, `deployment`, or `observation`), unique attempt/operation IDs, stage, exact operand instance/target (if any), recorded host boot identity, bounded-operation policy, and completion evidence. Intent is durable before invocation. An intent with no durable result means **may have run**, even if death preceded invocation. Result is `completed-success`, `completed-failure`, or `completion-unknown`; an unknown result never authorizes a subsequent external action.
+- Freeze rollback enablement and operation timeout when the candidate attempt begins preparation. Carry that same policy into its deployment/recovery journal. Every recovery stop, artifact import, workspace preparation, and restored apply uses this frozen timeout, not the operand's historical timeout or newly loaded config. Saved health windows/checks come from the instance being verified.
+- Observation journals are independent of deployment attempts and have no candidate/suppression. Save active operand, saved health policy, each current check's index/operation intent/result, and boot evidence. Journal the window before starting it and each external check before invocation, including retries. A restart must not mistake observation work for a failed deployment.
+- Preparation journals record asynchronous artifact work (build/pull/import/export), target, staging references, frozen policy, and completion evidence before invocation. Partial output is not a completed deployable artifact. Durable prepared inputs transition atomically to a deployment journal in `prepared`; no workload-mutation intent exists yet.
+
+### Deterministic restart decision table
+
+The table covers every stage and durable result. `Uncertain` means no result or completion-unknown. Before replaying **any** action after uncertainty, prove quiescence under 002/004/005; otherwise stay recovery-required with no competing command or mutation. Completed results prove only that recorded action, never a later unrecorded one. Advancement to the next normal candidate action is allowed only in the uninterrupted attempt. At startup an uncommitted workload mutation always enters recovery, never candidate continuation/promotion.
+
+| Journal kind / last durable stage | Uncertain result at startup, after quiescence | Completed-success at startup | Completed-failure at startup |
+| --- | --- | --- | --- |
+| preparation / `artifact-intent` | Abandon uncommitted preparation; preserve prior active | Abandon attempt; verified published artifacts may be reused only for identical inputs | Abandon attempt; preserve prior active |
+| deployment / `prepared` (no external action authorized) | Abandon; preserve prior active | Same; no candidate apply | Same; no candidate apply |
+| deployment / `prior-stop-intent` | Treat prior stop as incomplete; finish it in recovery | Record prior as stopped; do not repeat that stop | Retry prior stop once in the recovery attempt; failure blocks apply |
+| deployment / `candidate-apply-intent` | Candidate may be applied; clean exact instance then restore or finalize absence | Same recovery; do not continue candidate verification | Same recovery; idempotent stop tolerates no workload |
+| deployment / `candidate-verify-intent` | End/establish completion of checks; recover uncommitted candidate | Recover candidate even though checks passed; no success commit exists | Recover candidate |
+| deployment / `cleanup-intent` | Replay exact recorded cleanup operand/resource set | Skip completed operand cleanup; continue remaining recorded cleanup/restore plan | Retry failed cleanup once in new recovery attempt; failure blocks further mutation |
+| deployment / `restore-prepare-intent` (workspace/image import) | Abandon partial fresh instance after quiescence; prepare another; never rebuild images | Keep validated inputs; retain any earlier potentially live restoration operand and its cleanup obligation, then create a fresh restoration instance for this restart | Retry preparation once; missing/corrupt artifacts remain blocked |
+| deployment / `restore-apply-intent` | Stop possibly applied restoration instance (exec), then prepare/apply fresh restoration | Same recovery; do not resume old verification | Same recovery; failed stop blocks apply |
+| deployment / `restore-verify-intent` | End/establish completion of checks; stop possible restoration instance for exec (Compose follows owned-project reapplication), then start one fresh restoration | Same; passed checks without success commit do not promote | Same bounded new restoration attempt |
+| observation / `startup-verify-intent`, including per-check intents | Preserve active/last-good; clear interrupted observation only after quiescence, then start one fresh saved-health window | Clear uncommitted observation and run fresh startup window; no apply | Clear observation, then one fresh startup window; no rollback/suppression |
+| no journal / atomic candidate or restoration success committed | Not applicable | Run startup observation for saved active instance; zero apply calls | Not applicable |
+| no journal / atomic cleanup-to-absent committed | Not applicable | No startup health; resume eligibility subject to suppression | Not applicable |
+| no journal / atomic observation outcome committed | Not applicable | On process restart run fresh observation for known active | Same; repair and restart retries observation without reapplication |
+
+A result of completion-unknown is never a completed-failure checkpoint. For `prepared`, the result column is immaterial because no action is authorized; stray action evidence in this stage is inconsistent state and blocks. Stage/result combinations not defined above or with mismatched operands MUST be rejected, not guessed.
+
+- Recovery plan retains the potentially live prior, candidate, and latest restoration instances and each operand's cleanup completion. Never replace a restoration cleanup operand with the original candidate. Completed successful stops are not repeated merely because another stage crashed. At most those three distinct instances can need cleanup; a new restoration apply requires completed cleanup of earlier possible restoration instances.
+- If remaining cleanup is already complete and frozen policy selects absence, confirm absence through driver observation and commit terminal state without reapplying anything. If rollback selects restoration, perform one fresh restoration attempt after required cleanup. Restoration preparation and each external suboperation have durable intents/results; multiple artifact operations use distinct operation IDs within that stage.
+- Candidate success atomically promotes the candidate instance and clears its journal. Restoration success atomically sets active/last-good to the fresh restored instance, records failed-target suppression and rolled-back outcome, and clears its journal. Cleanup success atomically sets active absent, records suppression/failed outcome, and clears its journal. Historical last-good survives cleanup/failure. The suppression record and recovery-clear transition are in the **same** atomic commit.
+- Preparation-only and observation journals never suppress a target or restore/stop an otherwise established workload. After safe abandonment of preparation, startup-observe any prior active before resolving new desired work. A failed preparatory build is not a deployment failure even though it may change builder cache or cause external side effects outside rollback guarantees.
+
+### Startup, health, and retry
+
+- Validate current Application and acquire ownership first. Pending journals take precedence. Prove quiescence before new checks/commands, using recorded operation and boot evidence; lock ownership, PID absence, and passing health are insufficient.
+- Make at most one bounded workload-recovery attempt per pending deployment per process. Where no workload recovery has already verified active in this process, run at most one fresh startup-observation window after safe preparation/observation abandonment. Do not add a redundant startup window after verified restoration. A new startup-observation window following successfully abandoned old observation is that one window, not a retry of a newly failed window. Source/preparation failures with confirmed completion may retry on later polls; pending uncertain work, failed restoration, and failed startup health do not.
+- Known active requires durable observation intent before checking. Passing checks atomically clear observation and record healthy with observation time, preserving instance/last-good. Conclusive window failure atomically clears completed observation and records unhealthy/recovery-required without runtime mutation. Unconfirmed termination/context failure yields unknown; preserve any unresolved observation journal. Failure to persist an observation outcome also preserves its durable evidence and blocks.
+- On restart, health starts unknown regardless of historical success; confirmed absent uses not-applicable. No automatic apply/rollback follows failed startup health. Operator repair and another process restart are required. Success releases the startup block.
+- Every failed/interrupted candidate with workload-mutation intent is suppressed when recovery clears. Same desired episode survives restart and source failure; atomic observation of a different fully resolved target clears it. Failed B, observed C, then B permits B again even if C was not deployed. Preparation-only abandonment does not create suppression.
+
+## Non-goals
+
+Remote/replicated state, alternate production roots, automatic adoption, unlimited history, transparent schema migration, transactionally snapshotting running application data, and secret management.
+
+## Failure behavior
+
+Reject ownership conflicts, unsupported/corrupt state, and missing retained inputs before dependent actions. Failure to persist intent prevents invocation; failure after invocation prevents advancement and success claims. An uncertain operation blocks observation as well as deployment. Preserve last-good, exact instance operands, and the last durable journal for operator repair and restart; never infer a successful transition from a healthy endpoint.
+
+## Acceptance criteria
+
+| ID | Scenario | Required observation |
+| --- | --- | --- |
+| STATE-01 | Competing owner/alternate root | Only canonical owner acts; alternate root rejected |
+| STATE-02 | App state missing with binding; unrelated project without binding | Block/reject; no adoption or teardown |
+| STATE-03 | Power loss at artifact/archive publication and intent commitment | Only complete durable inputs referenced; no workload mutation before its intent |
+| STATE-04 | Crash at every table row with no result, success, failure, and unknown | Exactly table actions; undefined/inconsistent combinations blocked; no candidate continuation on restart |
+| STATE-05 | Crash during restored A apply, its cleanup, and later restoration | Correct instance/workspace operand retained; no B apply; completed stops not repeated |
+| STATE-06 | Crash after checks before versus after success commit | Before: recovery of uncommitted mutation; after: fresh startup observation with zero apply |
+| STATE-07 | Disk full before intent, after command-generated files, and after apply | No unjournaled invocation; no dependent action/success after failed durability barrier |
+| STATE-08 | Corrupt identity/manifest/archive/workspace reference | Blocking error, evidence retained, no substitution/rebuild |
+| STATE-09 | Known active survives restart versus missing service after reboot | Saved checks, healthy versus unhealthy; no apply; historical last-good retained |
+| STATE-10 | Suppressed B, restart, fetch failure, observed C, then B | Only successful different-target observation clears suppression |
+| STATE-11 | A/B/current config have different timeouts and policies | All recovery actions use B's frozen timeout/policy; checks use each saved health policy |
+| STATE-12 | Delayed old build/apply/check after client death | No competing action until proof; preparation/observation do not cause rollback/suppression |
+| STATE-13 | Kill startup command check; same-boot restart; later proven quiescence | Observation intent survives; no competing check; then one fresh saved-health window, no stop/apply |
+| STATE-14 | Confirmed startup failure versus uncertain termination | Unhealthy versus unknown; only completed observation cleared; restart safely retries |
+| STATE-15 | Restore A creates marker in fresh workspace; restart, later stop and GC | Active/last-good reference new instance; checks/stop read its marker; live workspace retained |
+| STATE-16 | Power loss around generated-file publication and workspace synchronization | Command tolerates partial files; completed checkpoints have durable recovery inputs |
+| STATE-17 | Interrupted build before any workload mutation; interrupted observation | Safely abandon/resume observation per table; A untouched; candidate not suppressed |
+| STATE-18 | Completed cleanup then crash before terminal commit | Reobserve absence and commit frozen-policy outcome; no unnecessary repeat of completed stops |
+| STATE-19 | Promotion from A to B, shared artifacts, candidate interruption, and GC restart | Only durably released zero-reference private paths eligible; last-good/current/pending/shared artifacts always pinned; host lock prevents publication/deletion race |
+| STATE-20 | More than 128 queued entries; slow deletion; failed unlink | One batch within scheduling/entry bounds, backlog retained for later cycle, no daemon pruning or protected deletion, committed deployment remains committed |
+| STATE-21 | Missing/corrupt archive despite daemon cache, before replacement versus pending recovery | Admission preserves A before mutation; pending recovery remains blocked; no rebuild/pull or reference release to make space |
+| STATE-22 | Storage estimate passes then quota/ENOSPC/short write fails | Actual error prevents publication/dependent action; last durable journal retained; reserve estimate does not imply success |
