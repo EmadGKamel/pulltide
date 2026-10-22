@@ -1,0 +1,3 @@
+interface:
+  display_name: "Pulltide Spec Implementation"
+  short_description: "Implement approved Pulltide specs with TDD"
