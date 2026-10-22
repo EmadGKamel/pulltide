@@ -64,3 +64,20 @@ passed. Python and the built Go CLI matched all 105 expected fixture outcomes
 (17 valid, 88 invalid). If Codex cannot find the installed toolchain, use its
 absolute paths or add `/usr/local/go/bin` to PATH for the current shell:
 `export PATH="/usr/local/go/bin:$PATH"`.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main`. One Linux
+job checks Go formatting, tests, vet, the Python contract checker, fixture parity,
+and diff whitespace. It uses the Go version declared in `go.mod`, Python 3.12.3,
+and the exact dependencies in `tests/contract/requirements.lock`.
+
+After the dependency setup above, reproduce the fixture parity check locally:
+
+```sh
+go build -o /tmp/pulltide-contract ./cmd/pulltide
+python3 tests/contract/parity.py /tmp/pulltide-contract
+```
+
+Parity requires both validators to match each fixture's expected acceptance or
+rejection. It also rejects unexpected CLI exit codes and incomplete manifests.
