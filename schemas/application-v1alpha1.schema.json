@@ -1,0 +1,343 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pulltide Application v1alpha1",
+  "description": "Application document structure derived from specs/001 and 003. This does not validate status, repository contents, or runtime capabilities. Defaults are annotations, not mutation.",
+  "$comment": "Normative sources: specs/001-application-contract.md and directly related specs/003-source-git.md, 004, 005, and 006. Additional semantic requirements and test coverage are documented in schemas/semantic-validation.md.",
+  "type": "object",
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "pulltide.io/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Application"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/string"
+            }
+          ],
+          "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "spec": {
+      "$ref": "#/$defs/spec"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "string": {
+      "type": "string",
+      "not": {
+        "pattern": "\u0000"
+      }
+    },
+    "nonemptyString": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/string"
+        }
+      ],
+      "minLength": 1
+    },
+    "duration": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      ],
+      "items": {
+        "$ref": "#/$defs/string"
+      }
+    },
+    "relativePath": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      ],
+      "pattern": "^(?!/)(?!\\.\\.(?:/|(?![\\s\\S])))(?![\\s\\S]*/\\.\\.(?:/|(?![\\s\\S])))[\\s\\S]+(?![\\s\\S])",
+      "description": "Relative Linux source path, without a .. component. Existence, symlinks, and retained-tree confinement require preparation checks."
+    },
+    "gitRef": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      ],
+      "pattern": "^(?:(?:[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64}|refs/(?:heads|tags)/(?!\\.)(?![\\s\\S]*//)(?![\\s\\S]*/\\.)(?![\\s\\S]*\\.\\.)(?![\\s\\S]*@\\{)(?![\\s\\S]*\\.lock(?:/|$))(?![\\s\\S]*[/.]$)[^\\x00-\\x20\\x7f~^:?*\\[\\\\]+))(?![\\s\\S])"
+    },
+    "sourceUrl": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      ],
+      "pattern": "^(?:(?:[Hh][Tt][Tt][Pp][Ss]://[^/?#@\\s]+(?:/[^?#\\s]*)?|[Ss][Ss][Hh]://(?:[^:/?#@\\s]+@)?[^/?#@\\s]+(?:/[^?#\\s]*)?|[Ff][Ii][Ll][Ee]://(?:[^/?#@\\s]+)?/[^?#\\s]*))(?![\\s\\S])",
+      "description": "Supported credential-free URL forms from 003. Full URL/authority/percent-encoding validation remains semantic; see semantic-validation.md."
+    },
+    "httpUrl": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nonemptyString"
+        }
+      ],
+      "pattern": "^(?:[Hh][Tt][Tt][Pp][Ss]?://[^/?#@\\s]+(?:[/?][^#\\s]*)?)(?![\\s\\S])",
+      "description": "Absolute HTTP(S) URL with nonempty authority, no userinfo or fragment. Full host/authority/port validation remains semantic."
+    },
+    "gitSource": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "git"
+        },
+        "url": {
+          "$ref": "#/$defs/sourceUrl"
+        },
+        "ref": {
+          "$ref": "#/$defs/gitRef"
+        },
+        "path": {
+          "$ref": "#/$defs/relativePath",
+          "default": "."
+        }
+      },
+      "required": [
+        "type",
+        "url",
+        "ref"
+      ],
+      "additionalProperties": false
+    },
+    "reconcile": {
+      "type": "object",
+      "properties": {
+        "intervalSeconds": {
+          "$ref": "#/$defs/duration",
+          "default": 30
+        },
+        "operationTimeoutSeconds": {
+          "$ref": "#/$defs/duration",
+          "default": 300
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "exec": {
+      "type": "object",
+      "properties": {
+        "apply": {
+          "$ref": "#/$defs/argv"
+        },
+        "stop": {
+          "$ref": "#/$defs/argv"
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*)(?![\\s\\S])"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/string"
+          },
+          "default": {}
+        }
+      },
+      "required": [
+        "apply",
+        "stop"
+      ],
+      "additionalProperties": false
+    },
+    "compose": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/relativePath"
+          }
+        }
+      },
+      "required": [
+        "files"
+      ],
+      "additionalProperties": false
+    },
+    "execRuntime": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "exec"
+        },
+        "exec": {
+          "$ref": "#/$defs/exec"
+        }
+      },
+      "required": [
+        "type",
+        "exec"
+      ],
+      "additionalProperties": false
+    },
+    "composeRuntime": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "docker-compose"
+        },
+        "docker-compose": {
+          "$ref": "#/$defs/compose"
+        }
+      },
+      "required": [
+        "type",
+        "docker-compose"
+      ],
+      "additionalProperties": false
+    },
+    "httpCheck": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "http"
+        },
+        "url": {
+          "$ref": "#/$defs/httpUrl"
+        },
+        "timeoutSeconds": {
+          "$ref": "#/$defs/duration",
+          "default": 5
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "commandCheck": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "command"
+        },
+        "command": {
+          "$ref": "#/$defs/argv"
+        },
+        "timeoutSeconds": {
+          "$ref": "#/$defs/duration",
+          "default": 5
+        }
+      },
+      "required": [
+        "type",
+        "command"
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "timeoutSeconds": {
+          "$ref": "#/$defs/duration",
+          "default": 60
+        },
+        "intervalSeconds": {
+          "$ref": "#/$defs/duration",
+          "default": 5
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/httpCheck"
+              },
+              {
+                "$ref": "#/$defs/commandCheck"
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "checks"
+      ],
+      "additionalProperties": false,
+      "$comment": "After defaulting, every check timeout must be <= health.timeoutSeconds. Standard JSON Schema has no data-reference comparison keyword; the test harness checks this semantic requirement."
+    },
+    "rollback": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/gitSource"
+        },
+        "reconcile": {
+          "$ref": "#/$defs/reconcile",
+          "default": {}
+        },
+        "runtime": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/execRuntime"
+            },
+            {
+              "$ref": "#/$defs/composeRuntime"
+            }
+          ]
+        },
+        "health": {
+          "$ref": "#/$defs/health"
+        },
+        "rollback": {
+          "$ref": "#/$defs/rollback",
+          "default": {}
+        }
+      },
+      "required": [
+        "source",
+        "runtime",
+        "health"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
