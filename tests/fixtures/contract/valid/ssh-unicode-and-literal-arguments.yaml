@@ -1,0 +1,25 @@
+apiVersion: pulltide.io/v1alpha1
+kind: Application
+metadata:
+  name: example
+spec:
+  source:
+    type: git
+    url: ssh://git@example.com:2222/team/app.git
+    ref: refs/tags/releases/v1
+  runtime:
+    type: exec
+    exec:
+      apply:
+      - ./deploy.sh
+      - a; echo literal
+      - ''
+      stop:
+      - ./stop.sh
+      env:
+        MESSAGE: مرحبا 🐚
+        EMPTY: ''
+  health:
+    checks:
+    - type: http
+      url: http://127.0.0.1:8080/health

@@ -53,14 +53,50 @@ class InputError(ValueError):
         self.code = code
 
 
+# YAML 1.2 Core resolution; never use SafeLoader's YAML 1.1 constructors.
+CORE_NULL = re.compile(r'^(?:~|null|Null|NULL|)$')
+CORE_BOOL = re.compile(r'^(?:true|True|TRUE|false|False|FALSE)$')
+CORE_INT = re.compile(r'^(?:[-+]?[0-9]+|0o[0-7]+|0x[0-9a-fA-F]+)$')
+CORE_FLOAT = re.compile(r'^(?:[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$')
+
+
+class CoreLoader(yaml.SafeLoader):
+    yaml_implicit_resolvers = {}
+
+
+def core_scalar(loader, node):
+    kind = node.tag.rsplit(':', 1)[-1]
+    value = node.value
+    patterns = {'null': CORE_NULL, 'bool': CORE_BOOL, 'int': CORE_INT, 'float': CORE_FLOAT}
+    if not patterns[kind].fullmatch(value):
+        raise InputError('tag-value')
+    if kind == 'null':
+        return None
+    if kind == 'bool':
+        return value.lower() == 'true'
+    if kind == 'int':
+        number = int(value[2:], 8) if value.startswith('0o') else int(value[2:], 16) if value.startswith('0x') else int(value, 10)
+        return number
+    if 'inf' in value.lower() or 'nan' in value.lower():
+        raise InputError('non-json-number')
+    return float(value)
+
+
+for kind, pattern in [('null', CORE_NULL), ('bool', CORE_BOOL), ('int', CORE_INT), ('float', CORE_FLOAT)]:
+    tag = 'tag:yaml.org,2002:' + kind
+    CoreLoader.add_implicit_resolver(tag, pattern, None)
+    CoreLoader.add_constructor(tag, core_scalar)
+CoreLoader.add_implicit_resolver('tag:yaml.org,2002:merge', re.compile(r'^<<$'), None)
+
+
 def load_document(text):
     """Preserve/check YAML information that JSON Schema cannot see."""
-    events = list(yaml.parse(text, Loader=yaml.SafeLoader))
+    events = list(yaml.parse(text, Loader=CoreLoader))
     if sum(isinstance(e, yaml.events.DocumentStartEvent) for e in events) != 1:
         raise InputError('document-count')
     if any(isinstance(e, yaml.events.AliasEvent) for e in events):
         raise InputError('alias')
-    node = yaml.compose(text, Loader=yaml.SafeLoader)
+    node = yaml.compose(text, Loader=CoreLoader)
     scalar_tags = {'str', 'int', 'float', 'bool', 'null'}
 
     def visit(current):
@@ -99,7 +135,7 @@ def load_document(text):
         keys = [key.value for key, _ in node.value]
         if 'apiVersion' in keys and 'kind' in keys and keys[:2] != ['apiVersion', 'kind']:
             raise InputError('entry-order')
-    data = yaml.safe_load(text)
+    data = yaml.load(text, Loader=CoreLoader)
 
     def json_values(value):
         if isinstance(value, float) and not math.isfinite(value):
@@ -190,6 +226,24 @@ class ContractChecks(unittest.TestCase):
     def assert_schema_rejects(self, document):
         # Assertions use only paths/codes, never raw user values or error messages.
         self.assertTrue(schema_issues(document), 'Expected a structural rejection')
+
+    def test_core_scalar_values_and_types(self):
+        cases = [('TRUE', True, bool), ('False', False, bool),
+                 ('yes', 'yes', str), ('off', 'off', str),
+                 ('2026-10-22', '2026-10-22', str), ('0010', 10, int),
+                 ('0o10', 8, int), ('0x10', 16, int), ('5.0', 5.0, float),
+                 ('1e1', 10.0, float), ('"true"', 'true', str),
+                 ('!!str true', 'true', str), ('!!int "0o10"', 8, int),
+                 ('!!float "10"', 10.0, float)]
+        for spelling, expected, kind in cases:
+            with self.subTest(case=spelling):
+                result = load_document('value: ' + spelling)['value']
+                self.assertIs(type(result), kind)
+                self.assertEqual(result, expected)
+        for spelling in ['!!bool yes', '!!int 1.5', '!!float 0o10', '!!null invalid']:
+            with self.subTest(case=spelling):
+                with self.assertRaises(InputError):
+                    load_document('value: ' + spelling)
 
     def test_meta_schema_and_local_references(self):
         Draft202012Validator.check_schema(SCHEMA)

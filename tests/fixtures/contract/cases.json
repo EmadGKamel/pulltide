@@ -1,0 +1,434 @@
+{
+  "cases": [
+    {
+      "file": "valid/exec-minimal.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/exec-explicit-defaults.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/compose-ordered-files-checks.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/ssh-unicode-and-literal-arguments.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/file-source-sha1.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/file-source-sha256.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/duration-boundaries.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/relative-spelling-and-order.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/unused-anchor.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/explicit-standard-string-tag.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "invalid/root-sequence.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-api-version.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-kind.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-metadata.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-name.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-spec.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-source.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-runtime.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-health.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-source-ref.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-stop.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/missing-check-url.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/wrong-api-version.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/wrong-kind.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unknown-top-field.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unknown-metadata-field.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unknown-source-field.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unknown-spec-field.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unknown-health-field.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/null-health.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/null-optional-policy.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/null-env.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/null-optional-path.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unsupported-source.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unsupported-runtime.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/mixed-runtime-blocks.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/runtime-type-block-mismatch.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/exec-empty-command.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/exec-empty-executable.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/exec-non-string-argument.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/exec-env-bad-key.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/exec-env-non-string.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/empty-checks.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/mixed-check-fields.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unknown-check-type.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/duration-zero.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/duration-negative.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/duration-above-maximum.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/duration-fraction.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/duration-string.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/duration-boolean.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/source-query.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/source-credentials.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/ssh-password.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/source-scp-shorthand.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/source-empty-host.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/unqualified-ref.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/ref-dotdot.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/ref-lock-component.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/source-absolute-path.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/source-traversing-path.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/health-fragment.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/health-userinfo.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/health-unsupported-scheme.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/name-final-newline.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/nul-env-value.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/compose-empty-files.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/compose-traversing-file.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/compose-build-not-application-field.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/check-timeout-over-window.yaml",
+      "expect": "semantic"
+    },
+    {
+      "file": "invalid/default-check-timeout-over-window.yaml",
+      "expect": "semantic"
+    },
+    {
+      "file": "invalid/integral-float-duration.yaml",
+      "expect": "semantic"
+    },
+    {
+      "file": "invalid/wrong-first-entry-order.yaml",
+      "expect": "yaml",
+      "code": "entry-order"
+    },
+    {
+      "file": "invalid/multiple-documents.yaml",
+      "expect": "yaml",
+      "code": "document-count"
+    },
+    {
+      "file": "invalid/duplicate-root-key.yaml",
+      "expect": "yaml",
+      "code": "duplicate-key"
+    },
+    {
+      "file": "invalid/duplicate-nested-key.yaml",
+      "expect": "yaml",
+      "code": "duplicate-key"
+    },
+    {
+      "file": "invalid/alias.yaml",
+      "expect": "yaml",
+      "code": "alias"
+    },
+    {
+      "file": "invalid/merge-key.yaml",
+      "expect": "yaml",
+      "code": "merge-key"
+    },
+    {
+      "file": "invalid/custom-tag.yaml",
+      "expect": "yaml",
+      "code": "custom-tag"
+    },
+    {
+      "file": "invalid/non-string-key.yaml",
+      "expect": "yaml",
+      "code": "mapping-key"
+    },
+    {
+      "file": "invalid/invalid-unicode-scalar.yaml",
+      "expect": "yaml",
+      "code": "unicode"
+    },
+    {
+      "file": "invalid/empty-stream.yaml",
+      "expect": "yaml",
+      "code": "document-count"
+    },
+    {
+      "file": "valid/core-boolean-true.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/core-boolean-false.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/core-decimal-leading-zero.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/core-octal.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/core-hex.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/core-string-values.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "valid/core-standard-tags.yaml",
+      "expect": "valid"
+    },
+    {
+      "file": "invalid/core-legacy-boolean.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/core-quoted-boolean.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/core-quoted-integer.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/core-exponent-integer.yaml",
+      "expect": "semantic"
+    },
+    {
+      "file": "invalid/core-tagged-float-integer.yaml",
+      "expect": "semantic"
+    },
+    {
+      "file": "invalid/core-invalid-bool-tag.yaml",
+      "expect": "yaml"
+    },
+    {
+      "file": "invalid/core-invalid-int-tag.yaml",
+      "expect": "yaml"
+    },
+    {
+      "file": "invalid/core-invalid-float-tag.yaml",
+      "expect": "yaml"
+    },
+    {
+      "file": "invalid/core-nonfinite-float.yaml",
+      "expect": "yaml"
+    },
+    {
+      "file": "invalid/core-date-integer.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/core-tagged-null.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/core-invalid-null-tag.yaml",
+      "expect": "yaml"
+    },
+    {
+      "file": "invalid/core-boolean-string-field.yaml",
+      "expect": "schema"
+    },
+    {
+      "file": "invalid/core-timestamp-tag.yaml",
+      "expect": "yaml"
+    },
+    {
+      "file": "invalid/core-float-octal-tag.yaml",
+      "expect": "yaml"
+    },
+    {
+      "file": "invalid/source-file-missing-authority.yaml",
+      "expect": "schema"
+    }
+  ]
+}

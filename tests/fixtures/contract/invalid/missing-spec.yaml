@@ -1,0 +1,4 @@
+apiVersion: pulltide.io/v1alpha1
+kind: Application
+metadata:
+  name: example

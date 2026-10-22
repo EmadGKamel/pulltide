@@ -1,0 +1,25 @@
+apiVersion: pulltide.io/v1alpha1
+kind: Application
+metadata:
+  name: example
+spec:
+  source:
+    type: git
+    url: https://example.com/team/app.git
+    ref: refs/heads/main
+  runtime:
+    type: docker-compose
+    docker-compose:
+      files:
+      - compose.yaml
+      - compose.override.yaml
+      - compose.yaml
+  health:
+    checks:
+    - type: http
+      url: http://127.0.0.1:8080/health
+    - type: command
+      command:
+      - ./check.sh
+      - literal argument
+      - ''
