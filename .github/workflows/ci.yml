@@ -40,6 +40,12 @@ jobs:
           fi
       - name: Go tests
         run: go test ./...
+      - name: Go race detector
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          gcc --version
+          go test -race ./...          
       - name: Go vet
         run: go vet ./...
       - name: Python contract checker
