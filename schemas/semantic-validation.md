@@ -34,7 +34,7 @@ JSON Schema `default` is an annotation: validation does **not** insert values, c
 
 ## YAML scalar resolution boundary
 
-The specifications do not select a YAML version or implicit scalar-resolution profile. This harness pins PyYAML and uses its safe scalar resolution; fixtures use unambiguous spellings or explicit standard tags. For version-dependent values (for example unquoted `yes`), that tool's behavior is **not a newly approved contract rule**. Before the production Go parser is implemented, the maintainer must settle its scalar-resolution compatibility against 001's no-coercion requirement. Quote string values to keep contract fixtures independent of that unresolved choice. No specification has been changed by this milestone.
+Specification 001 now requires YAML 1.2 Core Schema scalar resolution. Both validators must resolve nodes before field validation, retain integer-versus-float distinctions, and validate explicit standard tags rather than delegate to YAML 1.1 constructors. Quoted scalars remain strings unless explicitly tagged otherwise. Dates and legacy boolean spellings are strings; leading-zero integers are decimal and `0o`/`0x` select octal/hex. Non-finite floats, invalid tagged values, nulls, aliases, merge keys, duplicate keys, unsupported tags, and invalid Unicode are rejected. The shared fixture manifest includes the compatibility cases; the Python checker uses a dedicated Core loader rather than PyYAML's default implicit resolver. No field-driven coercion is allowed.
 
 ## Reproducible checks and coverage
 
@@ -45,3 +45,24 @@ The fixture manifest records expected `valid`, `yaml`, `schema`, or `semantic` o
 Additional tests cover required fields, null/wrong-type matrices, unknown fields at every defined object, runtime/check branches, defaults, boundaries, Git ref/path edge cases, meaningful array order, and exclusion of status fields. API-01–04 and the structural parts of API-05/06/09/10 have coverage here. Stateful behavior, canonical identity, and runtime build behavior in API-07/08/10 remain later milestones; no passing test is claimed for unimplemented behavior.
 
 Reference semantics: [JSON Schema validation/defaults](https://json-schema.org/draft/2020-12/json-schema-validation), [validator API](https://python-jsonschema.readthedocs.io/en/v4.10.2/validate/), and [Git reference syntax](https://git-scm.com/docs/git-check-ref-format). The repository specifications remain the normative contract.
+
+## Milestone 02 implementation boundary
+
+The Go parser in `internal/application` now implements the closed input objects,
+Core node resolution and tag validation, duplicate/alias/merge/tag rejection,
+scalar types, static paths/refs, complete URL syntax checks, recursive documented
+defaults, and per-check timeout comparison. It returns a separately owned typed
+model and retains source bytes and meaningful array order. The Python harness
+remains the schema/reference checker; Go structural rules are checked against the
+same complete fixture manifest. There is no field-driven YAML unmarshalling into
+Go models: scalar and structural validation precede model conversion.
+
+`tests/contract/m02-coverage.md` maps acceptance criteria to tests and records
+remaining boundaries. Configuration identity serialization/hashing, existing-state
+compatibility, and source/runtime preparation remain later work. In the current
+verification run, the maintainer-installed Go 1.27.3 toolchain was invoked using
+absolute paths because `/usr/local/go/bin` was absent from Codex's PATH.
+Compilation, gofmt, Go tests and vet passed, as did all 121 Python checks. A built
+Go CLI and the Python checker each matched all 105 expected fixture outcomes
+(17 accepted, 88 rejected). This verifies acceptance parity for the corpus, not
+identical diagnostics or untested inputs.

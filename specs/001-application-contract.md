@@ -56,6 +56,14 @@ spec:
 
 Input MUST contain exactly one YAML document with a mapping root. Mapping keys MUST be strings. Unknown fields at every level, duplicate keys, explicit null values, aliases, merge keys, custom tags, and scalar coercion MUST be rejected. Strings, booleans, integers, mappings, and arrays MUST have their declared types; quoted numbers are strings, not durations. All strings MUST be valid Unicode without NUL. Only `env` accepts arbitrary mapping keys, subject to its constraints below.
 
+### YAML scalar resolution
+
+v0.1 MUST use YAML 1.2 Core Schema scalar resolution, independently of the destination field type. Plain `true`, `True`, `TRUE`, `false`, `False`, and `FALSE` resolve as booleans; `yes`, `no`, `on`, `off`, and date-like values resolve as strings. Decimal integer syntax is `[-+]?[0-9]+` (leading zeros remain decimal), octal is `0o[0-7]+`, and hexadecimal is `0x[0-9a-fA-F]+`. Legacy sexagesimal numbers and implicit timestamp typing are not supported. Core null spellings, including empty scalars, resolve as null and are rejected by this contract.
+
+Core float spellings, including integral `5.0` and exponent notation, remain float-typed and MUST NOT satisfy integer fields. Non-finite numbers MUST be rejected. Quoted and block scalars resolve as strings unless an explicit permitted standard tag selects another type. Permitted standard tags are `!!str`, `!!bool`, `!!int`, `!!float`, `!!null`, `!!map`, and `!!seq`; their node kinds and scalar spellings MUST match their YAML 1.2 Core definitions. For example, `!!int "0o10"` is integer 8, `!!str true` is a string, and `!!bool yes` or `!!int 1.5` MUST fail. Explicit float tags may use decimal integer spellings as float values; octal and hexadecimal spellings are not float representations. Unsupported standard tags, custom tags, aliases, and merge keys remain prohibited; unused anchors remain permitted. A quoted or explicitly string-tagged `"<<"` mapping key is an ordinary string key, subject to the field's allowed keys.
+
+Implementations MUST NOT resolve scalars based on the expected field, coerce strings to booleans/numbers, convert floats to integers, or stringify non-string values. Numeric spelling is resolved to its value before bounds/default/identity rules apply. Python and Go validators MUST agree on acceptance of the shared fixture corpus.
+
 | Field | Required type and constraints | Omission behavior |
 | --- | --- | --- |
 | `apiVersion` | String, exactly `pulltide.io/v1alpha1` | Reject |
@@ -128,3 +136,4 @@ Validation MUST finish before runtime or deployment-state mutation. Errors ident
 | API-08 | Runtime-type changes with existing state fail. Pending restoration uses recorded inputs despite changed startup configuration, including changes to rollback policy. |
 | API-09 | Equivalent URL/path spellings are not collapsed. Canonical JSON fixtures exercise Unicode key ordering, control-character escaping, UTF-8, arrays, and booleans so separate implementations produce identical bytes/digests. |
 | API-10 | Compose string and mapping source-build definitions require no new Application fields; valid local builds prepare immutable artifacts. Unsupported build inputs fail preparation before service mutation. |
+| API-11 | Shared fixtures verify YAML 1.2 Core booleans, quoted strings, leading-zero decimal/octal/hex integers, floats versus integers, dates, valid standard tags, invalid tagged values, and unchanged YAML prohibitions; no destination-field coercion occurs. |

@@ -1,0 +1,28 @@
+apiVersion: pulltide.io/v1alpha1
+kind: Application
+metadata:
+  name: example
+spec:
+  source:
+    type: git
+    url: https://example.com/team/app.git
+    ref: refs/heads/main
+    path: folder//./name..part
+  runtime:
+    type: exec
+    exec:
+      apply:
+      - ./deploy.sh
+      stop:
+      - ./stop.sh
+      env:
+        SECOND: '2'
+        FIRST: '1'
+  health:
+    checks:
+    - type: command
+      command:
+      - ./check.sh
+    - type: http
+      url: HTTPS://[::1]:8443/health?ready=true
+      timeoutSeconds: 5

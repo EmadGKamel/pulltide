@@ -1,0 +1,23 @@
+apiVersion: pulltide.io/v1alpha1
+kind: Application
+metadata:
+  name: example
+spec:
+  source:
+    type: git
+    url: https://example.com/team/app.git
+    ref: refs/heads/main
+  runtime:
+    type: exec
+    exec:
+      apply:
+      - ./deploy.sh
+      stop:
+      - ./stop.sh
+    docker-compose:
+      files:
+      - compose.yaml
+  health:
+    checks:
+    - type: http
+      url: http://127.0.0.1:8080/health

@@ -1,0 +1,18 @@
+apiVersion: pulltide.io/v1alpha1
+kind: Application
+metadata:
+  name: example
+spec:
+  source:
+    type: git
+    url: https://example.com/team/app.git
+    ref: refs/heads/main
+  runtime:
+    type: exec
+    exec:
+      apply:
+      - ./deploy.sh
+      stop:
+      - ./stop.sh
+  health:
+    checks: []
