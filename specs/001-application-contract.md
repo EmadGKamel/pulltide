@@ -92,7 +92,9 @@ Input MUST contain exactly one YAML document with a mapping root. Mapping keys M
 
 Empty strings after the executable argument are permitted. Commands execute without an implicit shell. Absolute paths and `..` components in configured source/Compose paths MUST be rejected. Source paths resolve relative to the materialized repository root; Compose file paths resolve relative to the selected source directory. After symlink resolution all MUST stay inside the materialized tree. Directory/file existence and readability checks occur during preparation, before runtime mutation. Command arguments are not treated as source file paths; arbitrary operator commands remain operator responsibility.
 
-The operation timeout bounds each source, preparation, apply, stop, and restoration operation; termination behavior is defined in [004](004-runtime-exec.md) and [005](005-runtime-compose.md). Health deadline behavior is defined in [006](006-health.md).
+The operation timeout bounds each external source/preparation action (including each Compose image build/pull/import/export), apply, stop, and restoration action; termination behavior is defined in [004](004-runtime-exec.md) and [005](005-runtime-compose.md). Health deadline behavior is defined in [006](006-health.md). All recovery actions use the failed attempt's frozen timeout, even when operating on prior/last-good instances with different historical settings. Startup command checks instead use the saved observation health window/check timeouts.
+
+Compose `build` remains valid in repository Compose files; it requires no additional Application field. The supported build profile and retained image artifacts are defined in [005](005-runtime-compose.md). Local sibling build/context references follow driver path rules, not the stricter top-level Application path grammar. Those definitions and all recursively referenced inputs must be confined/validated before invoking the builder. External application data are allowed only through the explicit driver exception, never as build or definition inputs.
 
 ### Identity and compatibility
 
@@ -102,7 +104,7 @@ Configuration identity is `identity-v1:` followed by the lowercase SHA-256 hex d
 
 All normalized `spec` fields participate; `metadata` does not. Equal canonical bytes MUST produce equal identity across restart and software upgrade. An implementation MUST preserve `identity-v1` comparison for existing records; an unsupported identity version MUST block mutation, not silently produce a new target. Equivalent default omission or mapping order MUST NOT trigger deployment. Different significant array order, explicit values, or string spelling MUST produce a distinct target even at the same source revision. A target combines configuration identity with the source-neutral revision tuple from [003](003-source-git.md).
 
-Saved successful deployment inputs govern restoration; new commands, health checks, Compose files, or policy MUST NOT rewrite a pending attempt or historical record.
+An instanceId identifies an execution workspace/artifact binding independently of target identity. Restoring the same target creates a fresh instance without changing this configuration identity. Saved successful deployment inputs govern restoration; new commands, health checks, Compose files, or policy MUST NOT rewrite a pending attempt or historical record.
 
 ## Non-goals
 
@@ -125,3 +127,4 @@ Validation MUST finish before runtime or deployment-state mutation. Errors ident
 | API-07 | Identical canonical normalized spec bytes yield identical identity before/after restart and upgrade. A changed explicit value at the same commit produces a different target; an unsupported identity version blocks mutation. |
 | API-08 | Runtime-type changes with existing state fail. Pending restoration uses recorded inputs despite changed startup configuration, including changes to rollback policy. |
 | API-09 | Equivalent URL/path spellings are not collapsed. Canonical JSON fixtures exercise Unicode key ordering, control-character escaping, UTF-8, arrays, and booleans so separate implementations produce identical bytes/digests. |
+| API-10 | Compose string and mapping source-build definitions require no new Application fields; valid local builds prepare immutable artifacts. Unsupported build inputs fail preparation before service mutation. |
