@@ -22,6 +22,8 @@ HTTP and command checks during candidate verification, restoration verification,
 - Startup observation MUST distinguish historical last-good from current health. While observation is unfinished, current health is unknown. A conclusively failed startup window records unhealthy; unfinished/uncertain checks or unavailable context record unknown. Both report recovery-required, preserve historical last-good, and block normal deployment. It MUST NOT trigger automatic drift repair or apply. Restart after operator repair reruns observation; passing observation releases this block without reapply.
 - Diagnostics MUST identify check index/type and failure category without URLs containing credentials, response bodies, command arguments, environment values, or raw output. Command output follows the 64-KiB-per-stream transient capture-and-drain limit and no-raw-output rules in [exec](004-runtime-exec.md).
 
+Exec command checks use 004's restricted foreground process profile and the already recorded recovery inventory. They do not create/rewrite recovery declarations. Unavailable/unsafe execution context or uncertain termination yields completion-unknown. This process runner does not implement HTTP policy or replace the ordered health-window orchestration in 002.
+
 ## Non-goals
 
 TCP, gRPC, custom response-body assertions, authentication configuration, continuous monitoring, automatic drift repair, and proving that a shared endpoint belongs to a particular revision. Operators are responsible for targeting the intended deployment and writing observational checks.

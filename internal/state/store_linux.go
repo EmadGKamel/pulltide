@@ -641,3 +641,8 @@ func (s *Store) persistFailureEvidence() {
 		_ = s.replace(s.owner.Name+".state", encoded)
 	}
 }
+
+// Directory identifies this already-opened canonical store for internal adapters.
+// It is not an alternate production-root setting. The path is immutable; callers
+// still validate confinement and must retain the Store ownership handle.
+func (s *Store) Directory() string { return s.rootPath }

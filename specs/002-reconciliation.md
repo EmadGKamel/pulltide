@@ -40,6 +40,8 @@ Read-only snapshot access and hash-bound publication prevent discovery/validatio
 - Within the same boot, conclusive driver completion evidence permits recovery. Without that evidence, completion-unknown MUST remain recovery-required with no further command checks, cleanup, apply, or restore. Operators must stop the outstanding mutators and establish supported evidence; a host reboot provides the common v0.1 route when completion cannot otherwise be established.
 - A crash after action intent but before invocation is conservatively treated as possible invocation. Safety may therefore require a reboot even if the action never actually started.
 
+Exec completion/quiescence evidence is limited to 004's operator-attested foreground/local-only profile. Group observation is not a general escaped-descendant proof. Unsupported or uncertain completion blocks recovery and further commands; neither a timeout nor a PID/group disappearance may silently widen that profile. Exec inventory validation and durability must succeed before core accepts a successful apply checkpoint.
+
 ### Startup observation
 
 - A pending journal takes precedence over new desired work and follows the kind-specific restart matrix in 007. Deployment journals recover the workload; preparation journals safely abandon uncommitted artifact work; observation journals establish old-check completion before a fresh saved-health window. Only a deployment journal with workload-mutation intent triggers rollback/suppression.
