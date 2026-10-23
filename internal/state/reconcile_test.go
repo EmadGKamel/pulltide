@@ -75,7 +75,38 @@ func (f *fakeDriver) Materialize(ctx context.Context, t state.Target, s applicat
 	})
 	return state.Instance{Target: t, Saved: s, Workspace: workspace, Inputs: []state.FileReference{{Path: snapshot + "/source", SHA256: hash()}}}, err
 }
-func (f *fakeDriver) Prepare(ctx context.Context, i state.Instance, run reconcile.Artifacts) (state.Instance, error) {
+
+type fakeSnapshot struct{ instance state.Instance }
+
+func (s *fakeSnapshot) ReadFile(context.Context, string) ([]byte, error) {
+	return []byte("immutable"), nil
+}
+func (s *fakeSnapshot) ReadDir(context.Context, string) ([]reconcile.SourceEntry, error) {
+	return nil, nil
+}
+func (f *fakeDriver) Stage(ctx context.Context, t state.Target, s application.Spec, stage string, run reconcile.Artifacts) (reconcile.Snapshot, error) {
+	i, err := f.Materialize(ctx, t, s, stage, run)
+	if err != nil {
+		return nil, err
+	}
+	return &fakeSnapshot{instance: i}, nil
+}
+func (f *fakeDriver) Publish(_ context.Context, s reconcile.Snapshot, _ []string, _ reconcile.Artifacts) (state.Instance, error) {
+	return s.(*fakeSnapshot).instance, nil
+}
+func (f *fakeDriver) ValidateInputs(context.Context, state.Instance, []string) error { return nil }
+func (f *fakeDriver) Discover(context.Context, reconcile.Snapshot, application.Spec) ([]string, error) {
+	return nil, nil
+}
+func (f *fakeDriver) RestoreSource(ctx context.Context, i state.Instance, run reconcile.Artifacts) error {
+	return run(ctx, func(context.Context) reconcile.Result {
+		if os.MkdirAll(filepath.Join(f.root, i.Workspace), 0700) != nil {
+			return reconcile.Result{Outcome: reconcile.Failure}
+		}
+		return reconcile.Result{Outcome: reconcile.Success}
+	})
+}
+func (f *fakeDriver) Prepare(ctx context.Context, i state.Instance, _ reconcile.Snapshot, run reconcile.Artifacts) (state.Instance, error) {
 	return i, f.prepareErr
 }
 func (f *fakeDriver) InPlace(state.Instance) bool { return f.inPlace }
@@ -113,14 +144,7 @@ func (f *fakeDriver) Stop(ctx context.Context, is []state.Instance) reconcile.Re
 	}
 	return reconcile.Result{Outcome: reconcile.Success}
 }
-func (f *fakeDriver) Restore(ctx context.Context, i state.Instance, run reconcile.Artifacts) error {
-	return run(ctx, func(context.Context) reconcile.Result {
-		if err := os.MkdirAll(filepath.Join(f.root, i.Workspace), 0700); err != nil {
-			return reconcile.Result{Outcome: reconcile.Failure}
-		}
-		return reconcile.Result{Outcome: reconcile.Success}
-	})
-}
+func (f *fakeDriver) Restore(context.Context, state.Instance, reconcile.Artifacts) error { return nil }
 func (f *fakeDriver) Check(ctx context.Context, i state.Instance, c application.Check) reconcile.Result {
 	f.assertIntent("verify", i.ID)
 	f.trace = append(f.trace, "health")

@@ -144,9 +144,44 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 	}
 	e.emit()
 	run, seal := e.artifacts("artifact-intent", "", policy.OperationTimeoutSeconds)
-	candidate, err := e.source.Materialize(ctx, target, cloneSpec(e.app.Spec), "staging/"+staging, run)
+	snapshot, err := e.source.Stage(ctx, target, cloneSpec(e.app.Spec), "staging/"+staging, run)
+	var candidate state.Instance
+	var inputs []string
 	if err == nil {
-		candidate, err = e.runtime.Prepare(ctx, candidate, run)
+		result := bounded(ctx, seconds(policy.OperationTimeoutSeconds), func(c context.Context) Result {
+			var discoverErr error
+			inputs, discoverErr = e.runtime.Discover(c, snapshot, cloneSpec(e.app.Spec))
+			if discoverErr != nil {
+				return Result{Outcome: Failure}
+			}
+			return Result{Outcome: Success}
+		})
+		if result.Outcome != Success {
+			err = ErrCycle
+		}
+		if result.Outcome == Unknown {
+			e.blocked = true
+		}
+	}
+	if err == nil {
+		candidate, err = e.source.Publish(ctx, snapshot, inputs, run)
+	}
+	if err == nil {
+		candidate, err = e.runtime.Prepare(ctx, candidate, snapshot, run)
+	}
+	if err == nil {
+		result := bounded(ctx, seconds(policy.OperationTimeoutSeconds), func(c context.Context) Result {
+			if e.source.ValidateInputs(c, candidate, nil) != nil {
+				return Result{Outcome: Failure}
+			}
+			return Result{Outcome: Success}
+		})
+		if result.Outcome != Success {
+			err = ErrCycle
+		}
+		if result.Outcome == Unknown {
+			e.blocked = true
+		}
 	}
 	seal()
 	if e.blocked {
@@ -388,7 +423,12 @@ func (e *Engine) recover(ctx context.Context) error {
 	st, _ = e.store.Read()
 	instance := st.Instances[id]
 	run, seal := e.artifacts("restore-prepare-intent", id, policy.OperationTimeoutSeconds)
-	err = e.runtime.Restore(ctx, instance, run)
+	sourceContext, cancelSource := context.WithTimeout(ctx, e.remaining(seconds(policy.OperationTimeoutSeconds)))
+	err = e.source.RestoreSource(sourceContext, instance, run)
+	cancelSource()
+	if err == nil {
+		err = e.runtime.Restore(ctx, instance, run)
+	}
 	seal()
 	if err != nil {
 		return e.recoveryFailure(err)

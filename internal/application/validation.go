@@ -266,3 +266,11 @@ func validURL(raw string, source bool) bool {
 	}
 	return true
 }
+
+// ValidateSource rechecks the source boundary for callers using typed models.
+// It uses the same rules as document parsing and never echoes rejected values.
+func ValidateSource(s Source) error {
+	return contract().fields["spec"].fields["source"].validate(map[string]any{
+		"type": s.Type, "url": s.URL, "ref": s.Ref, "path": s.Path,
+	}, "spec.source")
+}
