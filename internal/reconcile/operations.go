@@ -91,6 +91,11 @@ func (e *Engine) guard(ctx context.Context, quiescence bool) (Evidence, error) {
 	}
 	var evidence Evidence
 	result := bounded(ctx, e.remaining(seconds(timeout)), func(c context.Context) Result {
+		for _, instance := range st.Instances {
+			if e.source.ValidateInputs(c, instance, nil) != nil {
+				return Result{Outcome: Failure}
+			}
+		}
 		value, err := e.runtime.Inspect(c, st)
 		if err != nil {
 			return Result{Outcome: Failure}

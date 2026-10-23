@@ -24,6 +24,14 @@ Startup, polling, target eligibility, driver orchestration, external-operation s
 - Suppression retains one target per continuously desired episode, not an unlimited failed-revision history. Failed B followed by successful observation of C ends B's episode; a later observation of B makes B eligible again even if C never deployed. A new configuration identity is part of this comparison.
 - No new target resolution or deployment may supersede pending recovery. After successful recovery, resume polling using current configuration; saved runtime and health inputs remain authoritative for the recovered deployment.
 
+### Two-phase source preparation
+
+Core MUST orchestrate source resolution, journaled private staging, read-only runtime discovery, source validation/publication of the complete discovered input closure, then effectful runtime preparation, in that order. Staging is source-only preparation, not deployment eligibility. Runtime discovery reads the immutable snapshot handle and returns repository-relative input roots; directories include all content before ignore filtering. Core MUST NOT parse source/runtime dependency formats. Source publication binds the snapshot hash and accepted closure in a durable manifest; only its returned retained instance may reach runtime artifact preparation. Invalid or changed closure/staging data prevents publication and runtime preparation.
+
+The source interface owns staging, publication, retained-input verification and fresh local source workspace restoration. The runtime interface separates observational discovery from effectful preparation and runtime-specific restoration. Runtime restoration does not fetch source; core restores source from verified local retained inputs before requesting runtime-specific imports/rebinding. Core validates all required retained source references before artifact/workload/recovery actions and after runtime preparation. Source and runtime actions use existing durable preparation/restoration intent/result callbacks; read-only discovery does not manufacture a mutating action or quiescence guarantee. Failed source preparation does not suppress or stop the established workload.
+
+Read-only snapshot access and hash-bound publication prevent discovery/validation TOCTOU. Missing/changed inputs fail before mutation intent; source staging or publication failures preserve current active/last-good. Only after source publication, runtime artifact preparation/retention and recovery admission may core persist workload-mutation intent. External dependencies have separately documented runtime policies and are never treated as retained source.
+
 ### Quiescence and operation outcomes
 
 - Each action returns `completed-success`, `completed-failure`, or `completion-unknown`. Completed failure means the driver can prove its deployment-side effects have stopped; a nonzero process exit alone is not sufficient for a driver with asynchronous effects.
@@ -115,3 +123,6 @@ Before workload mutation, active and last-good remain intact; unresolved artifac
 | RECON-15 | Shutdown or kill during build or startup check | Correct preparation/observation journal remains; no workload rollback/suppression merely for preparation/check interruption |
 | RECON-16 | Crash after completed apply/check but before next intent or atomic success | Follow exact 007 restart row; never continue/promote uncommitted candidate |
 | RECON-17 | Missing prior rollback archive or failed storage admission before candidate artifact work | No build/pull/import or workload replacement; active/last-good retained, no suppression; actual write failures checked even after passing admission |
+
+- **RECON-18:** A source/runtime double traces staging, read-only discovery, closure validation/publication, runtime preparation, then mutation intent/action. Discovery/publication validation failures invoke no runtime preparation or workload mutation; retained validation after runtime preparation prevents workload mutation. These failures create no suppression; already-running deployment is preserved.
+- **RECON-19:** Restoration verifies retained source and creates a fresh source workspace before runtime-specific local restoration. No moving-ref resolution or Git/network fallback occurs; corrupt snapshot/manifest blocks the next recovery mutator.

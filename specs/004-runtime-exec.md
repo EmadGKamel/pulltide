@@ -29,6 +29,12 @@ Exec preparation, replacement, cleanup, restoration, observation, execution cont
 - After Pulltide process death, an operation whose journal says it may have started MUST be treated as completion-unknown until quiescence is proved. Missing PID, a passed health check, or restarting Pulltide on the same host boot is insufficient. For v0.1 local operations, a changed Linux boot identity establishes that old command processes cannot continue; external or reboot-persistent deployment jobs are prohibited. Without proof, remain recovery-required rather than starting cleanup or restoration.
 - Raw stdout and stderr MUST NOT be persisted or exposed in logs/status. Each stream may use at most 64 KiB of transient capture; excess bytes MUST be discarded while draining the stream so output cannot block the command. Diagnostics MUST contain only operation, exit/signal/timeout category and bounded structured identifiers, never arguments, environment values, or raw output.
 
+### Source discovery and external dependency policy
+
+Follow the two-phase source contract in 003 and orchestration in 002. Discovery is a bounded, read-only operation over a staged immutable snapshot. Return the complete repository-relative source-backed input closure before source publication. Never fetch Git or verify Git objects in the runtime adapter. Source validation/publication must succeed before runtime artifact operations; use the published source bytes rather than mutable/ambient inputs. Reference cycles fail discovery. New discovered inputs require a new validated publication before use. Offline source restoration belongs to the source adapter; runtime-specific restoration consumes its fresh workspace and verified retained runtime artifacts without source network fallback.
+
+Exec exposes the entire selected source subtree as source-backed input. It does not infer arbitrary dependencies by executing or parsing operator commands. Permitted host executables and explicit operator-managed application data remain separately validated runtime dependencies under this specification; they are not archived source or permitted alternative definition/build inputs. Read-only discovery MUST NOT execute apply, stop, or health commands.
+
 ## Non-goals
 
 Built-in process supervision, sandboxing untrusted commands, automatic privilege escalation, shell language interpretation, remote deployment jobs, and transactional reversal of arbitrary command side effects. Host tools and external data are operator-managed dependencies; their contents are not archived by saving configuration.
@@ -49,3 +55,5 @@ A failed prior stop prevents candidate apply and invokes the shared recovery pol
 - **EXEC-08:** Generated recovery files survive committed completion across power loss; stop tolerates missing/partial files after interrupted apply. Restoration marker lives in a new instance/workspace used by later startup health/stop and protected from GC.
 - **EXEC-09:** A timeout of 10, B timeout of 30, and new startup timeout of 60 yield 30 for recovery stop/apply of A; saved A commands/env/workspace remain authoritative.
 - **EXEC-10:** Interrupted synchronization before completion yields persistence failure with no dependent command or success; external application-data writes are never claimed restored.
+
+- **EXEC-11:** Read-only discovery returns the selected source subtree without running commands. Source closure/publication failure prevents apply/stop/check invocation. Fresh offline source restoration precedes saved Exec execution; permitted host executables/data follow their separate policy.
