@@ -86,6 +86,12 @@ The seven approved decisions are normative in the sections above. There is no un
 
 Docker references supporting the underlying command capabilities: [Compose build](https://docs.docker.com/reference/compose-file/build/), [Compose up](https://docs.docker.com/reference/cli/docker/compose/up/), [image save](https://docs.docker.com/reference/cli/docker/image/save/), and [image load](https://docs.docker.com/reference/cli/docker/image/load/), [Docker CLI configuration](https://docs.docker.com/reference/cli/docker/), and [registry credentials](https://docs.docker.com/reference/cli/docker/login/). Pulltide's retention and safety requirements above are its own contract.
 
+### Source discovery and external dependency policy
+
+Follow the two-phase source contract in 003 and orchestration in 002. Discovery is a bounded, read-only operation over a staged immutable snapshot. Return the complete repository-relative source-backed input closure before source publication. Never fetch Git or verify Git objects in the runtime adapter. Source validation/publication must succeed before runtime artifact operations; use the published source bytes rather than mutable/ambient inputs. Reference cycles fail discovery. New discovered inputs require a new validated publication before use. Offline source restoration belongs to the source adapter; runtime-specific restoration consumes its fresh workspace and verified retained runtime artifacts without source network fallback.
+
+Compose owns parsing/interpolation and recursive discovery of definitions, env/config/secret files, Dockerfiles, and all accepted local build-context directories, including siblings before ignore filtering. It returns those roots to the source adapter for source validation; discovery itself performs no Docker/Compose command, build, pull or artifact operation. Explicit operator-managed application-data mounts are allowed only by the existing mount policy and checked separately; they cannot supply definitions, env/config/secret files, Dockerfiles or build contexts. Registry/base-image/package/remote-ADD dependencies retain the documented build-time network policy and are not Git inputs or rollback reconstruction sources.
+
 ## Non-goals
 
 Swarm, Kubernetes, remote daemons/builders, multi-platform publishing, general CI pipelines, untrusted-build sandboxing, volume snapshots, and database migration reversal. Image builds are explicitly in scope.
@@ -116,3 +122,5 @@ Invalid dependency closure, build profile, ownership, or context fails before in
 - **COMPOSE-18:** Delete/corrupt a required A archive while A still exists in daemon cache: rollback admission fails before any B build/pull/import or service replacement. Delete it during pending recovery: no next mutator, no rebuild/pull fallback, recovery remains blocked.
 - **COMPOSE-19:** Fake low/unknown capacity, low inodes, and shared-path accounting exercise the known-write lower bound plus 16 MiB/32-inode margin. A passing estimate followed by ENOSPC/short write never publishes artifacts or success; after mutation it blocks dependent actions and preserves recovery evidence.
 - **COMPOSE-20:** Per-attempt source/build workspaces and aliases differ, but shared daemon cache/resource pressure is observable and explicitly outside isolation guarantees. Automatic local cleanup does not imply bounded daemon storage or a fixed total disk footprint.
+
+- **COMPOSE-21:** Discovery resolves transitive sibling definitions and complete contexts through the immutable source handle, with no commands or writes. Source validates/publishes that closure before any build/pull/export; concurrent ambient/cache changes cannot alter inputs. External data mounts follow their separate policy and cannot substitute source definitions/contexts.
